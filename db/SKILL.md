@@ -55,7 +55,7 @@ db/
 | Package design, error handling, performance, collections, cursors, debugging | `db/plsql/` |
 | Privileges, VPD, masking, auditing, encryption, network security | `db/security/` |
 | SQL tuning, SQL patterns, dynamic SQL, injection avoidance | `db/sql-dev/` |
-| SQLcl basics, scripting, Liquibase, formatting, DDL generation, data loading, MCP server, scheduler daemon, AWR, background jobs | `db/sqlcl/` |
+| SQLcl basics, scripting, Liquibase, formatting, DDL generation, data loading, MCP server, scheduler daemon, AWR, background jobs, schema comparison with DIFF | `db/sqlcl/` |
 
 ## Key Starting Points
 
