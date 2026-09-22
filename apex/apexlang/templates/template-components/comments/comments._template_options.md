@@ -5,6 +5,7 @@ These entries come from `create_plugin_attribute` and `create_plugin_attr_value`
 Apply these values through the owning component's settings plus the shared avatar owner file when avatar rendering is enabled.
 Load `../avatar/avatar._template_options.md` for the shared avatar substructure used by Comments.
 Emit only exact accepted values from this inventory. Do not concatenate adjacent values into one token and do not substitute labels or implementation details.
+Rows scoped to `REPORT` or `REPORT_GROUP` record Universal Theme export metadata only; they do not by themselves prove an APEXlang emission shape. Emit report rows only where the curated Comments contract and target compiler permit them, and do not emit `REPORT_GROUP` rows because the pinned compiler exposes no supported Comments grouping block.
 
 When a row includes `values=`, pass the left-hand side of each `name=>return_value` pair.
 

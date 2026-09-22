@@ -167,13 +167,13 @@ function printUsage() {
   node tools/apexctl.mjs runtime verify-ui --app-path <path> [--runtime-base-url <url>] [--runtime-page-url <url>] [--runtime-provider <auto|chrome-devtools-mcp|http-fallback>] [--page <id>] [--artifact-dir <path>] [--report-path <path>]
   node tools/apexctl.mjs runtime validate --app-path <absolute_path> --db-connection-name <name> [--apex-root <path>] [--compiler-oracle-home <path>] [--execution-mode <auto|build-root|path>] [--workspaceid <id>] [--artifact-dir <path>] [--vscode-problems-path <path>] [--report-path <path>] [--transcript-path <path>]
   node tools/apexctl.mjs runtime roundtrip --app-path <path> --db-connection-name <name> [--import-intent <validate-only|validate-and-import>] [--execution-mode <auto|build-root|path>] [--target-resolution-mode <update-existing|create-new>] [--create-new-confirmed] [--workspaceid <id>] [--runtime-base-url <url>] [--runtime-page-url <url>] [--runtime-provider <auto|chrome-devtools-mcp|http-fallback>] [--page <id>] [--artifact-dir <path>] [--require-runtime-verification] [--skip-runtime-verification] [--supporting-objects] [--preflight-only] [--import-mode <auto|direct>] [--apex-root <path>] [--report-path <path>] [--transcript-path <path>]
-  node tools/apexctl.mjs runtime predeploy --app-path <path> [--fix-vocab]
+  node tools/apexctl.mjs runtime predeploy --app-path <path> [--fix-vocab] [--generation-plan <path>] [--require-smart-filter-generation-plan]
   node tools/apexctl.mjs apexlang format --app-path <path> [--strict-structure]
   node tools/apexctl.mjs apexlang validate --app-path <path> [--fix-vocab]
-  node tools/apexctl.mjs apexlang grammar contract --components <name[,name...]> [--children <parent.child[,parent.child...]>] [--instance <parent.child[id].[group.]property=value>]... [--groups <name[,name...]>] [--when <component[.group].property=value>]... [--cache-dir <path>] [--no-cache]
-  node tools/apexctl.mjs apexlang grammar audit --artifact-path <path> --components <name[,name...]> [--children <parent.child[,parent.child...]>] [--instance <parent.child[id].[group.]property=value>]... [--groups <name[,name...]>] [--when <component[.group].property=value>]... [--cache-dir <path>] [--no-cache]
+  node tools/apexctl.mjs apexlang grammar contract --components <name[,name...]> [--children <parent.child[,parent.child...]>] [--instance <parent.child[id].[group.]property=value>]... [--groups <name[,name...]>] [--when <component[.group].property=value>]... [--compiler-oracle-home <path>] [--cache-dir <path>] [--no-cache]
+  node tools/apexctl.mjs apexlang grammar audit --artifact-path <path> --components <name[,name...]> [--children <parent.child[,parent.child...]>] [--instance <parent.child[id].[group.]property=value>]... [--groups <name[,name...]>] [--when <component[.group].property=value>]... [--compiler-oracle-home <path>] [--cache-dir <path>] [--no-cache]
   node tools/apexctl.mjs apexlang compiler-truth audit --app-path <path> [--report-path <path>] [--compiler-oracle-home <path>] [--verify-component-attributes]
-  node tools/apexctl.mjs context resolve --intent <text> [--phase <draft|critique|revision>] [--max-bytes <count>] [--cache-path <path>] [--no-cache]
+  node tools/apexctl.mjs context resolve --intent <text> [--phase <draft|critique|revision>] [--max-bytes <count>] [--cache-path <path>] [--no-cache] [--require-ready]
   node tools/apexctl.mjs context repair [--problems <path>] [--rule-id <id[,id...]>] [--unit-id <id>] [--ir-pointer <pointer>] [--cache-path <path>] [--no-cache]
   node tools/apexctl.mjs diagnostics resolve-build-root --db-connection-name <name> [--apex-root <path>] [--report-path <path>]
 `);
@@ -297,7 +297,12 @@ async function materializeNewApp(packageRoot, appPath, workspaceNameInput) {
   return 0;
 }
 
-async function runApexlangValidation(packageRoot, runtimeRoot, appPath, { fixVocab = false } = {}) {
+async function runApexlangValidation(
+  packageRoot,
+  runtimeRoot,
+  appPath,
+  { fixVocab = false, generationPlan = "", requireSmartFilterGenerationPlan = false } = {}
+) {
   if (!appPath) {
     console.error("Missing required --app-path");
     return 1;
@@ -323,6 +328,8 @@ async function runApexlangValidation(packageRoot, runtimeRoot, appPath, { fixVoc
         path.join(runtimeRoot, "internal", "python", "validate_apexlang.py"),
         "--report-path",
         path.join(reportDir, "apexlang-dsl-report.json"),
+        ...(generationPlan ? ["--generation-plan", generationPlan] : []),
+        ...(requireSmartFilterGenerationPlan ? ["--require-smart-filter-generation-plan"] : []),
         appPath
       ]
     ],
@@ -524,6 +531,10 @@ async function handleContext(runRoot, args) {
       });
       const cachePath = await writeContextCapsule(runRoot, result, args, "context");
       console.log(JSON.stringify({ ...result.payload, capsule_bytes: result.bytes, cache_path: cachePath }, null, 2));
+      if (parseFlag(args, "--require-ready") && result.payload.generation_status !== "ready") {
+        console.error("APEXLANG_CONTEXT_BLOCKED " + result.payload.routing_decision.missingInputs.join(","));
+        return 2;
+      }
       return 0;
     }
     if (action === "repair") {
@@ -568,7 +579,9 @@ async function main() {
   }
   if (namespace === "apexlang" && rest[0] === "validate") {
     return runApexlangValidation(packageRoot, runtimeRoot, readOption(rest, "--app-path", ""), {
-      fixVocab: parseFlag(rest, "--fix-vocab")
+      fixVocab: parseFlag(rest, "--fix-vocab"),
+      generationPlan: readOption(rest, "--generation-plan", ""),
+      requireSmartFilterGenerationPlan: parseFlag(rest, "--require-smart-filter-generation-plan")
     });
   }
   if (namespace === "apexlang" && rest[0] === "grammar" && rest[1] === "contract") {
@@ -585,8 +598,10 @@ async function main() {
         instances: readOptions(rest, "--instance"),
         groups: [readOption(rest, "--groups", "")],
         conditions: readOptions(rest, "--when"),
+        compilerOracleHome: readOption(rest, "--compiler-oracle-home", readOption(rest, "--oracle-home", "")),
         cacheDir: readOption(rest, "--cache-dir", ""),
-        useCache: !parseFlag(rest, "--no-cache")
+        useCache: !parseFlag(rest, "--no-cache"),
+        compilerOracleHome: readOption(rest, "--compiler-oracle-home", readOption(rest, "--oracle-home", ""))
       });
       console.log(JSON.stringify({ ...result.contract, cache: { status: result.cacheStatus, path: result.cachePath } }, null, 2));
       return 0;
@@ -610,8 +625,10 @@ async function main() {
         instances: readOptions(rest, "--instance"),
         groups: [readOption(rest, "--groups", "")],
         conditions: readOptions(rest, "--when"),
+        compilerOracleHome: readOption(rest, "--compiler-oracle-home", readOption(rest, "--oracle-home", "")),
         cacheDir: readOption(rest, "--cache-dir", ""),
-        useCache: !parseFlag(rest, "--no-cache")
+        useCache: !parseFlag(rest, "--no-cache"),
+        compilerOracleHome: readOption(rest, "--compiler-oracle-home", readOption(rest, "--oracle-home", ""))
       });
       const audit = await auditGrammarContract({ contract, artifactPath });
       console.log(JSON.stringify(audit, null, 2));
