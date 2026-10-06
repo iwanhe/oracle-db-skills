@@ -1,5 +1,5 @@
 ---
-name: apexlang
+name: apexlang-generation
 description: Public APEXlang router with deterministic local-context discovery and compact machine-readable contracts.
 ---
 
